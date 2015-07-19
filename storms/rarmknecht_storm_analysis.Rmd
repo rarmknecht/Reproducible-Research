@@ -1,0 +1,148 @@
+---
+title: 'Health and Economic Impact of Severe Weather (US 1950 - 2011)'
+author: "Randy Armknecht"
+date: "Saturday, July 18, 2015"
+output: html_document
+keep_md: true
+---
+
+## Synopis
+TBD
+
+## Data Processing
+### Preparing the environment
+It's good practice to set the working directory at the start of a project:
+```{r}
+setwd("C:/Users/Randy/Documents/Github/Reproducible-Research/storms/")
+```
+
+### Loading and Processing the Data
+
+First obtain the data:
+```{r}
+# Only need to do this once, commenting out for knitr
+#data.url <- 'https://d396qusza40orc.cloudfront.net/repdata/data/StormData.csv.bz2'
+#download.file(data.url, destfile="storms.csv.bz2")
+```
+
+Now we can load the data we've downloaded:
+```{r, cache=TRUE}
+data.raw <- read.csv("storms.csv.bz2")
+```
+
+And consider some basic information about it:
+```{r}
+dim(data.raw)
+summary(data.raw)
+head(data.raw)
+```
+
+Create a dataset that is focused on health information:
+```{r}
+library(dplyr)
+data.slim.health <- select(data.raw, BGN_DATE, STATE, EVTYPE, FATALITIES, INJURIES)
+
+health <- group_by(data.slim.health, EVTYPE)
+health.sum <- summarise(health, 
+    count = n(),
+    fatalities = sum(FATALITIES),
+    injuries = sum(INJURIES),
+    f_or_i = fatalities + injuries,
+    i_per_event = injuries / count,
+    f_per_event = fatalities / count,
+    if_per_event = (injuries+fatalities)/count)
+```
+
+## Results
+### Across the United States, which types of events are most harmful with respect to population health?
+
+We can see that Hurricane/Typhoon and Extreme Heat have traditionally caused the greatest impact on population health on a per event basis.
+```{r}
+tmp <- arrange(filter(health.sum, count > 10), desc(if_per_event))[1:10,]
+par(las=2) # Make Label Perpendicular to Axis
+par(mar=c(7,10,4,2)) # Adjust Y Margin
+barplot(tmp$if_per_event, 
+        names.arg=tmp$EVTYPE, 
+        horiz=TRUE, 
+        cex.names=0.6, 
+        cex.axis=0.8,
+        xlim=c(0,20),
+        col="Dark Red",
+        main="Injuries or Fatalities Per Event")
+```
+
+In terms of total impact, Tornados have had the greatest affect on population health. The below chart is logrithmic due to the volume of people impacted by Tornados.
+```{r}
+tmp <- arrange(filter(health.sum, count > 10), desc(f_or_i))[1:10,]
+par(las=2) # Make Label Perpendicular to Axis
+par(mar=c(7,10,4,2)) # Adjust Y Margin
+barplot(tmp$f_or_i, 
+        names.arg=tmp$EVTYPE, 
+        horiz=TRUE, 
+        cex.names=0.6, 
+        cex.axis=0.8,
+        log="x",
+        xlim=c(1000,100000),
+        col="Dark Red", 
+        main="Total Injuries or Fatalities By Event Type")
+```
+
+## Data Exploration
+Consider various information about the event types impact on population health, per event:
+```{r}
+# Events with the greatest number of injuries per event
+arrange(health.sum, desc(i_per_event))[1:10,]
+
+# Events with the greatest number of fatalities per event
+arrange(health.sum, desc(f_per_event))[1:10,]
+
+# Again, but only Event Types that have occured at least 10 times
+arrange(filter(health.sum, count > 10), desc(i_per_event))[1:10,]
+arrange(filter(health.sum, count > 10), desc(f_per_event))[1:10,]
+
+# Let's consider both fatalities and injuries, as both impact population health
+arrange(filter(health.sum, count > 10), desc(if_per_event))[1:10,]
+```
+
+Consider various information about the event types impact on population health, in total:
+```{r}
+# Events with the greatest number of injuries
+arrange(health.sum, desc(injuries))[1:10,]
+
+# Events with the greatest number of fatalities per event
+arrange(health.sum, desc(fatalities))[1:10,]
+
+# Let's consider both fatalities and injuries, as both impact population health
+arrange(filter(health.sum, count > 10), desc(f_or_i))[1:10,]
+```
+
+Let's take a look at the various states:
+```{r}
+library(statebins)
+states <- group_by(data.slim.health, STATE)
+states.sum <- summarise(states, 
+    count = n(),
+    fatalities = sum(FATALITIES),
+    injuries = sum(INJURIES),
+    f_or_i = fatalities + injuries)
+
+abvs <- c("AK", "AL", "AR", "AZ", "CA", "CO", "CT",
+          "DC", "DE", "FL", "GA", "HI", "IA", "ID",
+          "IL", "IN", "KS", "KY", "LA", "MA", "MD",
+          "ME", "MI", "MN", "MO", "MS", "MT", "NC",
+          "ND", "NE", "NH", "NJ", "NM", "NV", "NY",
+          "OH", "OK", "OR", "PA", "RI", "SC", "SD", 
+          "TN", "TX", "UT", "VA", "VT", "WA", "WI",
+          "WV", "WY")
+states.pure <- states.sum[states.sum$STATE %in% abvs,]
+states.pure$state <- as.character(states.pure$STATE)
+statebins_continuous(as.data.frame(states.pure), brewer_pal="Purples",
+                     state_col="state", value_col="f_or_i")
+
+
+```
+
+Surprisingly Texas takes the worst of it.
+```{r}
+arrange(states.pure, desc(f_or_i))[1:10,]
+```
