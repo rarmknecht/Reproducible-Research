@@ -53,6 +53,50 @@ health.sum <- summarise(health,
     if_per_event = (injuries+fatalities)/count)
 ```
 
+Create a dataset that is focused on economic information:
+```{r}
+data.slim.econ <- select(data.raw, BGN_DATE, STATE, EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+
+econ <- group_by(data.slim.econ, EVTYPE)
+econ <- filter(econ, PROPDMG > 0)
+econ <- mutate(econ, pmulti = gsub("K", 1000, PROPDMGEXP)) 
+econ <- mutate(econ, pmulti = gsub("M", 1000000, pmulti))
+econ <- mutate(econ, pmulti = gsub("B", 1000000000, pmulti))
+econ <- mutate(econ, pmulti = as.factor(pmulti))
+
+conly <- filter(econ, CROPDMG > 0 || PROPDMG > 0)
+conly
+conly <- mutate(conly, cm = ifelse(CROPDMGEXP == "K", 1000, 
+                            ifelse(CROPDMGEXP == "M", 1000000, 
+                            ifelse(CROPDMGEXP == "B", 1000000000, NA))),
+                       pm = ifelse(PROPDMGEXP == "K", 1000, 
+                            ifelse(PROPDMGEXP == "M", 1000000, 
+                            ifelse(PROPDMGEXP == "B", 1000000000, NA))))
+econ$pmulti
+econ$property
+for (i in 1:nrow(data.slim.econ)) {
+  if(data.slim.econ[i,]$PROPDMG > 0){
+    if(data.slim.econ[i,]$PROPDMGEXP == "K"){
+      data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMG * 1000
+    } else if (data.slim.econ[i,]$PROPDMGEXP == "M") {
+      data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMG * 1000000
+    } else if (data.slim.econ[i,]$PROPDMGEXP == "B") {
+      data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMG * 1000000000
+    } else {
+      data.slim.econ[i,]$property <- NA
+    }
+  } else {
+    data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMGEXP
+  }
+}
+
+unique(data.slim.econ$PROPDMGEXP)
+  
+econ <- group_by(data.slim.econ, EVTYPE)
+econ.sum <- summarize(econ, count = n())
+
+```
+
 ## Results
 ### Across the United States, which types of events are most harmful with respect to population health?
 
@@ -86,6 +130,9 @@ barplot(tmp$f_or_i,
         col="Dark Red", 
         main="Total Injuries or Fatalities By Event Type")
 ```
+
+### Across the United States, which types of events have the greatest economic impact?
+
 
 ## Data Exploration
 Consider various information about the event types impact on population health, per event:
