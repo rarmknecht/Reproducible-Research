@@ -1,13 +1,13 @@
 ---
 title: 'Health and Economic Impact of Severe Weather (US 1950 - 2011)'
 author: "Randy Armknecht"
-date: "Saturday, July 18, 2015"
+date: "Friday, July 24, 2015"
 output: html_document
 keep_md: true
 ---
 
 ## Synopis
-TBD
+Over the last 60 years more than $419 Billion in economic damage has occured, the bulk by flooding and hurricanes. More than 154,000 people have been either injured or killed by storms.  Given the broad timeframe, and the population of the United States, this number was much lower than anticipated.  What follows is the data processing to setup the analysis, some core results to answer the main questions, and then exploratory analysis as a bonus.
 
 ## Data Processing
 ### Preparing the environment
@@ -55,53 +55,39 @@ health.sum <- summarise(health,
 
 Create a dataset that is focused on economic information:
 ```{r}
+# Limit the fields we need
 data.slim.econ <- select(data.raw, BGN_DATE, STATE, EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
 
+# Groupd by Event Type
 econ <- group_by(data.slim.econ, EVTYPE)
-econ <- filter(econ, PROPDMG > 0)
-econ <- mutate(econ, pmulti = gsub("K", 1000, PROPDMGEXP)) 
-econ <- mutate(econ, pmulti = gsub("M", 1000000, pmulti))
-econ <- mutate(econ, pmulti = gsub("B", 1000000000, pmulti))
-econ <- mutate(econ, pmulti = as.factor(pmulti))
 
-conly <- filter(econ, CROPDMG > 0 || PROPDMG > 0)
-conly
+# Crop Damage
+conly <- filter(econ, CROPDMG > 0)
+
+# We need to create actual dollar values
 conly <- mutate(conly, cm = ifelse(CROPDMGEXP == "K", 1000, 
-                            ifelse(CROPDMGEXP == "M", 1000000, 
-                            ifelse(CROPDMGEXP == "B", 1000000000, NA))),
-                       pm = ifelse(PROPDMGEXP == "K", 1000, 
-                            ifelse(PROPDMGEXP == "M", 1000000, 
-                            ifelse(PROPDMGEXP == "B", 1000000000, NA))))
-econ$pmulti
-econ$property
-for (i in 1:nrow(data.slim.econ)) {
-  if(data.slim.econ[i,]$PROPDMG > 0){
-    if(data.slim.econ[i,]$PROPDMGEXP == "K"){
-      data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMG * 1000
-    } else if (data.slim.econ[i,]$PROPDMGEXP == "M") {
-      data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMG * 1000000
-    } else if (data.slim.econ[i,]$PROPDMGEXP == "B") {
-      data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMG * 1000000000
-    } else {
-      data.slim.econ[i,]$property <- NA
-    }
-  } else {
-    data.slim.econ[i,]$property <- data.slim.econ[i,]$PROPDMGEXP
-  }
-}
+                            ifelse(CROPDMGEXP == "M", 1000000,
+                            ifelse(CROPDMGEXP == "m", 1000000,
+                            ifelse(CROPDMGEXP == "B", 1000000000, 1)))))
+conly <- mutate(conly, cvalue = cm*CROPDMG)
 
-unique(data.slim.econ$PROPDMGEXP)
-  
-econ <- group_by(data.slim.econ, EVTYPE)
-econ.sum <- summarize(econ, count = n())
+# Property Damage
+ponly <- filter(econ, PROPDMG > 0)
 
+# We need to create actual dollar values
+ponly <- mutate(ponly, pm = ifelse(PROPDMGEXP == "K", 1000, 
+                            ifelse(PROPDMGEXP == "M", 1000000,
+                            ifelse(PROPDMGEXP == "m", 1000000,
+                            ifelse(PROPDMGEXP == "B", 1000000000, 1)))))
+ponly <- mutate(ponly, pvalue = pm*PROPDMG)
 ```
 
 ## Results
 ### Across the United States, which types of events are most harmful with respect to population health?
 
-We can see that Hurricane/Typhoon and Extreme Heat have traditionally caused the greatest impact on population health on a per event basis.
-```{r}
+We can see that Hurricane/Typhoon and Extreme Heat have traditionally caused the greatest impact on population health on a per event basis. In terms of total impact, Tornados have had the greatest affect on population health. The below chart is logrithmic due to the volume of people impacted by Tornados.
+```{r, label="Results-Health"}
+layout(matrix(c(1,1,2,2)))
 tmp <- arrange(filter(health.sum, count > 10), desc(if_per_event))[1:10,]
 par(las=2) # Make Label Perpendicular to Axis
 par(mar=c(7,10,4,2)) # Adjust Y Margin
@@ -113,10 +99,7 @@ barplot(tmp$if_per_event,
         xlim=c(0,20),
         col="Dark Red",
         main="Injuries or Fatalities Per Event")
-```
 
-In terms of total impact, Tornados have had the greatest affect on population health. The below chart is logrithmic due to the volume of people impacted by Tornados.
-```{r}
 tmp <- arrange(filter(health.sum, count > 10), desc(f_or_i))[1:10,]
 par(las=2) # Make Label Perpendicular to Axis
 par(mar=c(7,10,4,2)) # Adjust Y Margin
@@ -132,9 +115,32 @@ barplot(tmp$f_or_i,
 ```
 
 ### Across the United States, which types of events have the greatest economic impact?
+In terms of crop damage, Drought has the greatest impact at nearly $14 Billion in total damages in the data set.
+In terms of property damage, Flood has the greatest impact at over $144 Billion in total damages in the data set.
+```{r, label="Results-Econ"}
+layout(matrix(c(1,1,2,2)))
+# Crop Damages
+tmp <- arrange(summarise(conly, TCD=sum(cvalue)), desc(TCD))[1:10,]
+par(las=2) # Make Label Perpendicular to Axis
+par(mar=c(7,10,4,2)) # Adjust Y Margin
+barplot(tmp$TCD, names.arg=tmp$EVTYPE,
+        horiz=TRUE, cex.names = 0.6, cex.axis = 0.8,
+        xlim=c(0, 1.5e+10), col="Dark Red", main="Crop Damage by Event Type")
+tmp
+
+# Property Damages
+tmp <- arrange(summarise(ponly, TPD=sum(pvalue)), desc(TPD))[1:10,]
+par(las=2) # Make Label Perpendicular to Axis
+par(mar=c(7,10,4,2)) # Adjust Y Margin
+barplot(tmp$TPD, names.arg=tmp$EVTYPE,
+        horiz=TRUE, cex.names = 0.6, cex.axis = 0.8, log="x",
+        xlim=c(1.0e+09, 1.0e+12), col="Dark Red", main="Log of Property Damage by Event Type")
+tmp
+```
 
 
 ## Data Exploration
+### Health Exploration
 Consider various information about the event types impact on population health, per event:
 ```{r}
 # Events with the greatest number of injuries per event
@@ -181,10 +187,11 @@ abvs <- c("AK", "AL", "AR", "AZ", "CA", "CO", "CT",
           "OH", "OK", "OR", "PA", "RI", "SC", "SD", 
           "TN", "TX", "UT", "VA", "VT", "WA", "WI",
           "WV", "WY")
+# Limited to 3 Figures in the final doc for the class
 states.pure <- states.sum[states.sum$STATE %in% abvs,]
 states.pure$state <- as.character(states.pure$STATE)
-statebins_continuous(as.data.frame(states.pure), brewer_pal="Purples",
-                     state_col="state", value_col="f_or_i")
+#statebins_continuous(as.data.frame(states.pure), brewer_pal="Purples",
+#                     state_col="state", value_col="f_or_i")
 
 
 ```
@@ -192,4 +199,39 @@ statebins_continuous(as.data.frame(states.pure), brewer_pal="Purples",
 Surprisingly Texas takes the worst of it.
 ```{r}
 arrange(states.pure, desc(f_or_i))[1:10,]
+```
+
+### Economic Exploration
+Let's calculate the total crop damage that is in the data set
+```{r}
+sum(arrange(summarise(conly, TCD=sum(cvalue)), desc(TCD))[1:10,2])
+```
+
+Now lets look at which states get hit the hardest by it.
+```{r}
+# Limited to 3 Figures in the final doc for the class
+csts <- group_by(conly, STATE)
+csts <- summarize(csts, count=n(), TCD=sum(cvalue))
+csts.pure <- csts[csts$STATE %in% abvs,]
+csts.pure$STATE <- as.character(csts.pure$STATE)
+#statebins_continuous(as.data.frame(csts.pure), brewer_pal="Greens",
+#                     state_col = "STATE", value_col = "TCD")
+
+arrange(csts.pure, desc(TCD))[1:10,]
+```
+
+Let's calculate the total property damage that is in the data set
+```{r}
+sum(arrange(summarise(ponly, TPD=sum(pvalue)), desc(TPD))[1:10,2])
+```
+
+Now lets look at which states get hit the hardest by it.
+```{r}
+psts <- group_by(ponly, STATE)
+psts <- summarize(psts, count=n(), TPD=sum(pvalue))
+psts.pure <- psts[psts$STATE %in% abvs,]
+psts.pure$STATE <- as.character(psts.pure$STATE)
+statebins_continuous(as.data.frame(psts.pure), brewer_pal="Blues",
+                     state_col = "STATE", value_col = "TPD")
+arrange(psts.pure, desc(TPD))[1:10,]
 ```
